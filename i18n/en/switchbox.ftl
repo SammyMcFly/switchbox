@@ -1,7 +1,9 @@
 app-title = switchbox
-about = About
+settings = Settings
 repository = Repository
 view = View
 welcome = Welcome to COSMIC! ✨
 page-id = Page { $num }
 git-description = Git commit {$hash} on {$date}
+footer-info = Footer Info
+close = Close

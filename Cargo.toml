@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MPL-2.0"
 description = "Media routing and manipulation program"
-repository = "http://forgejo.lan/Lysander/switchbox"
+repository = "https://github.com/SammyMcFly/switchbox"
 
 [dependencies]
 futures-util = "0.3.31"

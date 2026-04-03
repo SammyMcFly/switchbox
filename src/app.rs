@@ -6,11 +6,15 @@ use cosmic::app::context_drawer;
 use cosmic::cosmic_config::{self, CosmicConfigEntry};
 use cosmic::iced::alignment::{Horizontal, Vertical};
 use cosmic::iced::{Alignment, Length, Subscription};
-use cosmic::widget::{self, about::About, icon, menu, nav_bar};
+use cosmic::{cosmic_theme, theme};
+use cosmic::widget::{self, about::About, menu, icon};
 use cosmic::{iced_futures, prelude::*};
 use futures_util::SinkExt;
+use core::fmt;
 use std::collections::HashMap;
 use std::time::Duration;
+use std::fmt::{Display, Formatter};
+
 
 const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 const APP_ICON: &[u8] = include_bytes!("../resources/icons/hicolor/scalable/apps/icon.svg");
@@ -24,12 +28,14 @@ pub struct AppModel {
     context_page: ContextPage,
     /// The about page for this app.
     about: About,
-    /// Contains items assigned to the nav bar panel.
-    nav: nav_bar::Model,
+    /// Active page tracker
+    page_active: Page,
     /// Key bindings for the application's menu bar.
-    key_binds: HashMap<menu::KeyBind, MenuAction>,
+    key_binds: HashMap<menu::KeyBind, Message>,
     /// Configuration data that persists between application runs.
     config: Config,
+    /// Inspected node
+    inspect: Option<Node>,
     /// Time active
     time: u32,
     /// Toggle the watch subscription
@@ -39,11 +45,32 @@ pub struct AppModel {
 /// Messages emitted by the application and its widgets.
 #[derive(Debug, Clone)]
 pub enum Message {
+    Select(Page),
+    Inspect(Option<Node>),
     LaunchUrl(String),
     ToggleContextPage(ContextPage),
     ToggleWatch,
     UpdateConfig(Config),
     WatchTick(u32),
+}
+
+/// The page to display in the application.
+#[derive(Debug, Clone, Default)]
+pub enum Page {
+    Page1,
+    Page2,
+    #[default]
+    Page3,
+}
+
+impl Display for Page {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Page::Page1 => write!(f, "Device - Software"),
+            Page::Page2 => write!(f, "Software - Device"),
+            Page::Page3 => write!(f, "Device - Device"),
+        }
+    }
 }
 
 /// Create a COSMIC application from the app model
@@ -58,7 +85,7 @@ impl cosmic::Application for AppModel {
     type Message = Message;
 
     /// Unique identifier in RDNN (reverse domain name notation) format.
-    const APP_ID: &'static str = "dev.mmurphy.Test";
+    const APP_ID: &'static str = "com.github.SammyMcFly.switchbox";
 
     fn core(&self) -> &cosmic::Core {
         &self.core
@@ -73,25 +100,6 @@ impl cosmic::Application for AppModel {
         core: cosmic::Core,
         _flags: Self::Flags,
     ) -> (Self, Task<cosmic::Action<Self::Message>>) {
-        // Create a nav bar with three page items.
-        let mut nav = nav_bar::Model::default();
-
-        nav.insert()
-            .text(fl!("page-id", num = 1))
-            .data::<Page>(Page::Page1)
-            .icon(icon::from_name("applications-science-symbolic"))
-            .activate();
-
-        nav.insert()
-            .text(fl!("page-id", num = 2))
-            .data::<Page>(Page::Page2)
-            .icon(icon::from_name("applications-system-symbolic"));
-
-        nav.insert()
-            .text(fl!("page-id", num = 3))
-            .data::<Page>(Page::Page3)
-            .icon(icon::from_name("applications-games-symbolic"));
-
         // Create the about widget
         let about = About::default()
             .name(fl!("app-title"))
@@ -105,7 +113,7 @@ impl cosmic::Application for AppModel {
             core,
             context_page: ContextPage::default(),
             about,
-            nav,
+            page_active: Page::default(),
             key_binds: HashMap::new(),
             // Optional configuration file for an application.
             config: cosmic_config::Config::new(Self::APP_ID, Config::VERSION)
@@ -120,6 +128,7 @@ impl cosmic::Application for AppModel {
                     }
                 })
                 .unwrap_or_default(),
+            inspect: None,
             time: 0,
             watch_is_active: false,
         };
@@ -130,22 +139,42 @@ impl cosmic::Application for AppModel {
         (app, command)
     }
 
-    /// Elements to pack at the start of the header bar.
-    fn header_start(&self) -> Vec<Element<'_, Self::Message>> {
-        let menu_bar = menu::bar(vec![menu::Tree::with_children(
-            menu::root(fl!("view")).apply(Element::from),
-            menu::items(
-                &self.key_binds,
-                vec![menu::Item::Button(fl!("about"), None, MenuAction::About)],
-            ),
-        )]);
-
-        vec![menu_bar.into()]
+    fn header_center(&self) -> Vec<Element<'_, Self::Message>> {
+        vec![
+            widget::tooltip(
+                widget::button::text(Page::Page1.to_string())
+                    .on_press(Message::Select(Page::Page1)),
+                widget::text(fl!("settings")),
+                widget::tooltip::Position::Bottom,
+            )
+            .into(),
+            widget::tooltip(
+                widget::button::text(Page::Page2.to_string())
+                    .on_press(Message::Select(Page::Page2)),
+                widget::text(fl!("settings")),
+                widget::tooltip::Position::Bottom,
+            )
+            .into(),
+            widget::tooltip(
+                widget::button::text(Page::Page3.to_string())
+                    .on_press(Message::Select(Page::Page3)),
+                widget::text(fl!("settings")),
+                widget::tooltip::Position::Bottom,
+            )
+            .into(),
+        ]
     }
 
-    /// Enables the COSMIC application to create a nav bar with this model.
-    fn nav_model(&self) -> Option<&nav_bar::Model> {
-        Some(&self.nav)
+    fn header_end(&self) -> Vec<Element<'_, Message>> {
+        vec![
+            widget::tooltip(
+                widget::button::icon(widget::icon::from_name("application-menu-symbolic"))
+                    .on_press(Message::ToggleContextPage(ContextPage::Settings)),
+                widget::text(fl!("settings")),
+                widget::tooltip::Position::Bottom,
+            )
+            .into(),
+        ]
     }
 
     /// Display a context drawer if the context page is requested.
@@ -155,12 +184,71 @@ impl cosmic::Application for AppModel {
         }
 
         Some(match self.context_page {
-            ContextPage::About => context_drawer::about(
+            ContextPage::Settings => context_drawer::about(
                 &self.about,
                 |url| Message::LaunchUrl(url.to_string()),
-                Message::ToggleContextPage(ContextPage::About),
+                Message::ToggleContextPage(ContextPage::Settings),
             ),
         })
+    }
+
+    fn footer(&self) -> Option<Element<'_, Message>> {
+        if self.inspect.is_none() {
+            return None;
+        }
+
+        let cosmic_theme::Spacing {
+            space_xxs,
+            space_xs,
+            space_s,
+            ..
+        } = theme::active().cosmic().spacing;
+
+        let container = widget::layer_container(widget::column::with_children(vec![
+            widget::row::with_children([
+                widget::column::with_children(vec![
+                    widget::text::body("footer").into(),
+                ])
+                .align_x(Alignment::Start)
+                .into(),
+                widget::space::horizontal().into(),
+                widget::column::with_children(vec![
+                    widget::tooltip(
+                        widget::button::icon(icon::from_name("window-close-symbolic"))
+                            .on_press(Message::Inspect(None))
+                            .padding(8),
+                        widget::text::body(fl!("close")),
+                        widget::tooltip::Position::Top,
+                    )
+                    .into()
+                ])
+                .align_x(Alignment::End)
+                .into(),
+            ])
+            .padding([space_xxs, 0])
+            .align_y(Alignment::Center)
+            .into(),
+            widget::space::vertical().height(space_xs).into(),
+            widget::text::body("footer").into(),
+            widget::space::vertical().height(space_s).into(),
+            widget::row::with_children(vec![
+                widget::button::link(fl!("footer-info"))
+                    .on_press(Message::ToggleContextPage(ContextPage::Settings))
+                    .padding(0)
+                    .trailing_icon(true)
+                    .into(),
+                widget::space::horizontal().into(),
+                widget::button::standard(fl!("footer-info"))
+                    .on_press(Message::ToggleContextPage(ContextPage::Settings))
+                    .into(),
+            ])
+            .align_y(Alignment::Center)
+            .into(),
+        ]))
+        .padding([space_xxs, space_xs])
+        .layer(cosmic_theme::Layer::Primary);
+
+        Some(container.into())
     }
 
     /// Describes the interface based on the current state of the application model.
@@ -169,7 +257,7 @@ impl cosmic::Application for AppModel {
     /// events received by widgets will be passed to the update method.
     fn view(&self) -> Element<'_, Self::Message> {
         let space_s = cosmic::theme::spacing().space_s;
-        let content: Element<_> = match self.nav.active_data::<Page>().unwrap() {
+        let content: Element<_> = match self.page_active {
             Page::Page1 => {
                 let header = widget::row::with_capacity(2)
                     .push(widget::text::title1(fl!("welcome")))
@@ -218,8 +306,18 @@ impl cosmic::Application for AppModel {
                     .align_y(Alignment::End)
                     .spacing(space_s);
 
+                let counter_label = ["Watch: ", self.time.to_string().as_str()].concat();
+                let section = cosmic::widget::settings::section().add(
+                    cosmic::widget::settings::item::builder(counter_label).control(
+                        widget::button::text("Footer")
+                        .on_press(Message::Inspect(Some(Node { id: 1 }))),
+                    ),
+                );
+
+
                 widget::column::with_capacity(1)
                     .push(header)
+                    .push(section)
                     .spacing(space_s)
                     .height(Length::Fill)
                     .into()
@@ -282,6 +380,14 @@ impl cosmic::Application for AppModel {
     /// on the application's async runtime.
     fn update(&mut self, message: Self::Message) -> Task<cosmic::Action<Self::Message>> {
         match message {
+            Message::Select(page) => {
+                self.page_active = page;
+            }
+
+            Message::Inspect(page) => {
+                self.inspect = page
+            }
+
             Message::WatchTick(time) => {
                 self.time = time;
             }
@@ -314,14 +420,6 @@ impl cosmic::Application for AppModel {
         }
         Task::none()
     }
-
-    /// Called when a nav item is selected.
-    fn on_nav_select(&mut self, id: nav_bar::Id) -> Task<cosmic::Action<Self::Message>> {
-        // Activate the page in the model.
-        self.nav.activate(id);
-
-        self.update_title()
-    }
 }
 
 impl AppModel {
@@ -329,10 +427,8 @@ impl AppModel {
     pub fn update_title(&mut self) -> Task<cosmic::Action<Message>> {
         let mut window_title = fl!("app-title");
 
-        if let Some(page) = self.nav.text(self.nav.active()) {
-            window_title.push_str(" — ");
-            window_title.push_str(page);
-        }
+        window_title.push_str(" — ");
+        window_title.push_str(&self.page_active.to_string());
 
         if let Some(id) = self.core.main_window_id() {
             self.set_window_title(window_title, id)
@@ -342,31 +438,15 @@ impl AppModel {
     }
 }
 
-/// The page to display in the application.
-pub enum Page {
-    Page1,
-    Page2,
-    Page3,
+#[derive(Debug, Clone)]
+pub struct Node {
+    id: u32,
 }
 
 /// The context page to display in the context drawer.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub enum ContextPage {
     #[default]
-    About,
+    Settings,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum MenuAction {
-    About,
-}
-
-impl menu::action::MenuAction for MenuAction {
-    type Message = Message;
-
-    fn message(&self) -> Self::Message {
-        match self {
-            MenuAction::About => Message::ToggleContextPage(ContextPage::About),
-        }
-    }
-}
