@@ -1,4 +1,4 @@
-app-title = {{ project-name | title_case }}
+app-title = switchbox
 about = About
 repository = Repository
 view = View

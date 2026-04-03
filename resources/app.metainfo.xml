@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>{{ appid }}</id>
+  <id>com.github.SammyMcFly.switchbox</id>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>{{ license }}</project_license>
-  <name>{{ project-name | title_case }}</name>
-  <summary>{{ description }}</summary>
+  <project_license>MPL-2.0</project_license>
+  <name>Switchbox</name>
+  <summary>Media routing and manipulation program</summary>
   <icon type="remote" width="64" height="64" scale="1">
-    {{ repository-url }}/raw/main/resources/icons/hicolor/scalable/apps/icon.svg
+    http://forgejo.lan/Lysander/switchbox/raw/main/resources/icons/hicolor/scalable/apps/icon.svg
   </icon>
-  <url type="vcs-browser">{{ repository-url }}</url>
-  <launchable type="desktop-id">{{ appid }}.desktop</launchable>
+  <url type="vcs-browser">http://forgejo.lan/Lysander/switchbox</url>
+  <launchable type="desktop-id">com.github.SammyMcFly.switchbox.desktop</launchable>
   <provides>
-    <id>{{ appid }}</id>
+    <id>com.github.SammyMcFly.switchbox</id>
     <binaries>
-      <binary>{{ project-name }}</binary>
+      <binary>switchbox</binary>
     </binaries>
   </provides>
   <requires>

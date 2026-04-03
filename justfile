@@ -1,8 +1,8 @@
 # Name of the application's binary.
-name := '{{ project-name }}'
+name := 'switchbox'
 # The unique ID of the application.
-appid := '{{ appid }}'
-{% raw %}
+appid := 'com.github.SammyMcFly.switchbox'
+
 # Path to root file system, which defaults to `/`.
 rootdir := ''
 # The prefix for the `/usr` directory.
@@ -93,4 +93,4 @@ tag version:
     git commit -m 'release: {{version}}'
     git commit --amend
     git tag -a {{version}} -m ''
-{% endraw %}
+

@@ -1,9 +1,9 @@
 [Desktop Entry]
-Name={{ project-name | title_case }}
-Comment={{ description }}
+Name=Switchbox
+Comment=Media routing and manipulation program
 Type=Application
-Icon={{ appid }}
-Exec={{ project-name }} %F
+Icon=com.github.SammyMcFly.switchbox
+Exec=switchbox %F
 Terminal=false
 StartupNotify=true
 Categories=COSMIC

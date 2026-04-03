@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: {{ license }}
+// SPDX-License-Identifier: MPL-2.0
 
 mod app;
 mod config;
