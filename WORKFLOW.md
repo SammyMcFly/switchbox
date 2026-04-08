@@ -1,14 +1,18 @@
-Suggested workflow (Git-based, works in Forgejo/GitHub)[GPT5-mini]
+Suggested workflow (Git-based, works in Forgejo/GitHub)[Based on GPT5-mini]
 
 1. Create an issue
    - Title: short summary
    - Body: goals, acceptance criteria, mockups, steps to reproduce (if bug), labels, assignee, milestone.
 
 2. Create a feature branch
-   - Name: use convention, e.g., feature/<issue-number>-short-desc or feat/<issue#>-short-desc
+   - Name convention: feature,bugfix,chore,docs,test,refactor,perf/<issue-number>-short-desc
    - Command:
      ```
      git checkout -b feature/123-add-login
+     ```
+   - Push branch and set upstream:
+     ```
+     git push -u origin feature/123-add-login
      ```
 
 3. Link branch to the issue
@@ -17,10 +21,6 @@ Suggested workflow (Git-based, works in Forgejo/GitHub)[GPT5-mini]
 
 4. Work in small, focused commits
    - Make logical commits with clear messages.
-   - Push frequently:
-     ```
-     git push -u origin feature/123-add-login
-     ```
 
 5. Open a pull/merge request (PR/MR)
    - Base: target branch (e.g., main or develop).
