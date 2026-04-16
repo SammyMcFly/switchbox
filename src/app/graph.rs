@@ -3,10 +3,12 @@
 //
 
 use super::Message;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use cosmic::prelude::*;
 use cosmic::{widget, theme};
-use cosmic::iced::Alignment;
+use cosmic::iced::{Alignment, Length};
+use cosmic::iced::widget::stack;
+use cosmic::iced::widget::canvas;
 
 
 pub type PwId = u32;
@@ -21,9 +23,7 @@ const AUDIO_PORT_COLOR: cosmic::iced::Color = cosmic::iced::Color::from_rgb8(232
 const MIDI_PORT_COLOR: cosmic::iced::Color = cosmic::iced::Color::from_rgb8(0, 171, 122);
 // const PARAMETER_PORT_COLOR: cosmic::iced::Color = cosmic::iced::Color::from_rgb8(181, 9, 40);
 
-
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MediaType {
     Video,
     Audio,
@@ -50,7 +50,7 @@ pub enum PortType {
 pub struct Graph {
     objects: Vec<PwId>,
     entities: HashMap<PwId, PipewireEntity>,
-    connections: HashMap<(PwId, PwId), Connection>,
+    connections: HashSet<PipewireConnection>,
 }
 
 impl Graph {
@@ -75,7 +75,9 @@ impl Graph {
         entities.insert(17, PipewireEntity::MediaObject { id: 17, name: "test_device_3".to_string(), device_type: DeviceClass::Device, nodes: vec![16] });
 
 
-        let connections = HashMap::new();
+        let mut connections = HashSet::new();
+        connections.insert(PipewireConnection { from_port_id: 5, to_port_id: 11, media_type: MediaType::Audio, });
+        connections.insert(PipewireConnection { from_port_id: 6, to_port_id: 12, media_type: MediaType::Audio, });
 
         Self {
             objects: vec![1, 7, 17],
@@ -84,8 +86,31 @@ impl Graph {
         }
     }
 
-    pub fn view(&self, hovered_object: Option<PwId>, inspected_object: Option<PwId>) -> Element<'_, Message> {
+    fn canvas_padding() -> f32 {
         let spacing = theme::active().cosmic().spacing;
+        spacing.space_xxxs as f32
+    }
+
+    fn column_padding() -> f32 {
+        let spacing = theme::active().cosmic().spacing;
+        spacing.space_none as f32
+    }
+
+    fn column_spacing() -> f32 {
+        let spacing = theme::active().cosmic().spacing;
+        spacing.space_xxs as f32
+    }
+
+    pub fn view(&self, hovered_object: Option<PwId>, inspected_object: Option<PwId>, width: f32) -> Element<'_, Message> {
+        // store positions of all ports
+        let mut port_positions: HashMap<PwId, (f32, f32)> = HashMap::new();
+
+        // Widget layer
+        // Sources
+        // references to track the position on the canvas
+        let x_total_padding_sources = Self::canvas_padding()+Self::column_padding()+PipewireEntity::object_padding()+PipewireEntity::node_width()-PipewireEntity::node_padding()-PipewireEntity::inspected_port_size()/2.;
+        let y_total_padding_sources = Self::canvas_padding()+Self::column_padding();
+        let mut reference = (x_total_padding_sources, y_total_padding_sources);
 
         let mut sources: widget::Column<'_, Message> = widget::column();
         for pwid in &self.objects {
@@ -95,10 +120,19 @@ impl Graph {
                 hovered_object,
                 inspected_object,
                 &self.entities,
+                &mut reference,
+                &mut port_positions,
             ) {
                 sources = sources.push(device);
+                reference.1 += Self::column_spacing();
             }
         }
+
+        // Sinks
+        // references to track the position on the canvas
+        let x_total_padding_sinks = width - x_total_padding_sources;
+        let y_total_padding_sinks = Self::canvas_padding()+Self::column_padding();
+        let mut reference = (x_total_padding_sinks, y_total_padding_sinks);
 
         let mut sinks: widget::Column<'_, Message> = widget::column();
         for pwid in &self.objects {
@@ -108,25 +142,37 @@ impl Graph {
                 hovered_object,
                 inspected_object,
                 &self.entities,
+                &mut reference,
+                &mut port_positions,
             ) {
                 sinks = sinks.push(device);
+                reference.1 += Self::column_spacing();
             }
         }
 
-        widget::row::with_children([
+        let widget_layer = widget::row::with_children([
             sources
-            .spacing(spacing.space_xxs)
+            .spacing(Self::column_spacing())
+            .padding(Self::column_padding())
             .align_x(Alignment::Start)
             .into(),
             widget::space::horizontal().into(),
             sinks
-            .spacing(spacing.space_xxs)
+            .spacing(Self::column_spacing())
+            .padding(Self::column_padding())
             .align_x(Alignment::End)
             .into(),
         ])
-        .padding(spacing.space_xxxs)
-        .align_y(Alignment::Start)
-        .into()
+        .padding(Self::canvas_padding())
+        .align_y(Alignment::Start);
+
+        // Connections
+        let ccset = CanvasConnectionSet::from(&self.connections, &port_positions);
+        let connection_layer = cosmic::iced::widget::canvas::Canvas::<CanvasConnectionSet, Message, cosmic::Theme, cosmic::Renderer>::new(ccset)
+            .width(Length::Fill)
+            .height(Length::Fill);
+
+        stack![widget_layer, connection_layer].into()
     }
 }
 
@@ -171,10 +217,92 @@ pub enum PipewireEntity {
 }
 
 impl PipewireEntity {
-    fn view<'a>(&self, side: PortType, media_type: MediaType, hovered_object: Option<PwId>, inspected_object: Option<PwId>, objects: &'a HashMap<PwId, Self>) -> Option<Element<'a, Message>> {
+    const fn node_width() -> f32 {
+        200.
+    }
+    const fn inspection_border_width() -> f32 {
+        2.
+    }
+
+    fn object_spacing() -> f32 {
+        let spacing = theme::active().cosmic().spacing;
+        spacing.space_xxs as f32
+    }
+
+    fn object_padding() -> f32 {
+        let spacing = theme::active().cosmic().spacing;
+        spacing.space_xxs as f32
+    }
+
+    fn object_label_height() -> f32 {
+        let spacing = theme::active().cosmic().spacing;
+        spacing.space_xl as f32
+    }
+
+    fn object_label_padding() -> f32 {
+        let spacing = theme::active().cosmic().spacing;
+        spacing.space_xxs as f32
+    }
+
+    fn node_spacing() -> f32 {
+        let spacing = theme::active().cosmic().spacing;
+        spacing.space_none as f32
+    }
+
+    fn node_padding() -> f32 {
+        let spacing = theme::active().cosmic().spacing;
+        spacing.space_xxs as f32
+    }
+
+    fn node_label_height() -> f32 {
+        let spacing = theme::active().cosmic().spacing;
+        spacing.space_l as f32
+    }
+
+    fn port_spacing() -> f32 {
+        let spacing = theme::active().cosmic().spacing;
+        spacing.space_none as f32
+    }
+
+    fn port_padding() -> f32 {
+        let spacing = theme::active().cosmic().spacing;
+        spacing.space_xxs as f32
+    }
+
+    fn port_height() -> f32 {
+        let spacing = theme::active().cosmic().spacing;
+        spacing.space_l as f32
+    }
+
+    fn port_spacing_to_label() -> f32 {
+        let spacing = theme::active().cosmic().spacing;
+        spacing.space_xxs as f32
+    }
+
+    const fn inspected_port_size() -> f32 {
+        16.
+    }
+
+    const fn port_font_size() -> f32 {
+        12.
+    }
+
+    fn view<'a>(
+        &self,
+        side: PortType,
+        media_type: MediaType,
+        hovered_object: Option<PwId>,
+        inspected_object: Option<PwId>,
+        objects: &'a HashMap<PwId, Self>,
+        reference: &mut (f32, f32),
+        port_positions: &mut HashMap<PwId, (f32, f32)>,
+    ) -> Option<Element<'a, Message>> {
         match self {
             Self::MediaObject { id, name, device_type, nodes } => {
-                let spacing = theme::active().cosmic().spacing;
+                // add height to reference position
+                let height_of_header = Self::object_padding()*0.+Self::object_label_height();
+                let height_of_footer = Self::object_padding();
+                reference.1 += height_of_header;
 
                 let is_hovered = if let Some(hover_pwid) = hovered_object {
                     hover_pwid == *id
@@ -189,28 +317,47 @@ impl PipewireEntity {
                 };
 
                 let mut device: widget::Column<'_, Message> = widget::column();
-                let label: Element<'_, Message> = widget::row::with_children([widget::text(name.clone()).into()]).padding(spacing.space_xxs).into();
+                let label: Element<'_, Message> = widget::row::with_children([widget::text(name.clone()).into()])
+                    .height(Self::object_label_height())
+                    .align_y(Alignment::Center)
+                    .padding(Self::object_label_padding())
+                    .into();
                 device = device.push(label);
 
                 let mut nodes_content: widget::Column<'_, Message> = widget::column();
                 let mut has_nodes_on_side = false;
                 for pwid in nodes {
-                    if let Some(node) = objects.get(pwid).expect("Failed to get value for key").view(side, media_type, hovered_object, inspected_object, objects) {
+                    if let Some(node) = objects
+                        .get(pwid).expect("Failed to get value for key")
+                        .view(side, media_type, hovered_object, inspected_object, objects, reference, port_positions) {
                         nodes_content = nodes_content.push(node);
+                        reference.1 += Self::object_spacing();
                         has_nodes_on_side = true;
                     }
                 }
 
                 if !has_nodes_on_side {
+                    // remove height to reference position
+                    reference.1 -= height_of_header;
                     return None
                 }
 
-                device = device.push(widget::row::with_children([nodes_content.spacing(spacing.space_xxs).into()]));
+                // add height to reference position
+                reference.1 -= Self::object_spacing();
+                reference.1 += height_of_footer;
 
+                // create UI element
                 let padding = match side {
-                    PortType::Source => [0, 0, spacing.space_xxs, spacing.space_xxs],
-                    PortType::Sink => [0, spacing.space_xxs, spacing.space_xxs, 0],
+                    PortType::Source => [0., 0., Self::object_padding(), Self::object_padding()],
+                    PortType::Sink => [0., Self::object_padding(), Self::object_padding(), 0.],
                 };
+
+                device = device.push(widget::row::with_children([
+                    nodes_content
+                        .spacing(Self::object_spacing())
+                        .padding(padding)
+                        .into()
+                ]));
 
                 let alignment = match side {
                     PortType::Source => Alignment::Start,
@@ -221,16 +368,15 @@ impl PipewireEntity {
                     widget::container(
                         device
                             .align_x(alignment)
-                            .spacing(spacing.space_none)
-                            .padding(padding)
+                            // .padding(padding)
                     )
-                    .width(200)
+                    // .width(200)
                     .style(move |theme: &cosmic::Theme| {
                         let cosmic_data = theme.cosmic();
                         if is_inspected {
                             let border = cosmic::iced::Border {
                                 color: cosmic_data.accent.base.into(),
-                                width: 2.0,
+                                width: Self::inspection_border_width(),
                                 radius: 8.0.into(),
                             };
                             if is_hovered {
@@ -281,7 +427,10 @@ impl PipewireEntity {
             }
 
             Self::Node { id, name, media_type, ports } => {
-                let spacing = theme::active().cosmic().spacing;
+                // add height to reference position
+                let height_of_header = Self::node_padding()+Self::node_label_height()+Self::node_spacing();
+                let height_of_footer = Self::node_padding();
+                reference.1 += height_of_header;
 
                 let is_hovered = if let Some(hover_pwid) = hovered_object {
                     hover_pwid == *id
@@ -296,39 +445,52 @@ impl PipewireEntity {
                 };
 
                 let mut node: widget::Column<'_, Message> = widget::column();
-                let label: Element<'_, Message> = widget::row::with_children([widget::text(name.clone()).into()]).into();
+                let label: Element<'_, Message> = widget::row::with_children([widget::text(name.clone()).into()])
+                    .height(Self::node_label_height())
+                    .align_y(Alignment::Center)
+                    .into();
                 node = node.push(label);
                 let mut has_ports_on_side = false;
                 for key in ports {
-                    if let Some(port) = objects.get(key).expect("Failed to get value for key").view(side, *media_type, hovered_object, inspected_object, objects) {
+                    if let Some(port) = objects
+                        .get(key).expect("Failed to get value for key")
+                        .view(side, *media_type, hovered_object, inspected_object, objects, reference, port_positions) {
                         node = node.push(port);
+                        reference.1 += Self::port_spacing();
                         has_ports_on_side = true;
                     }
                 }
 
                 if !has_ports_on_side {
+                    // remove height to reference position
+                    reference.1 -= height_of_header;
                     return None
                 }
 
+                // add height to reference position
+                reference.1 -= Self::port_spacing();
+                reference.1 += height_of_footer;
+
+                // create UI element
                 let padding = match side {
-                    PortType::Source => [spacing.space_xxs, 0, spacing.space_xxs, spacing.space_xxs],
-                    PortType::Sink => [spacing.space_xxs, spacing.space_xxs, spacing.space_xxs, 0],
+                    PortType::Source => [Self::node_padding(), 0., Self::node_padding(), Self::node_padding()],
+                    PortType::Sink => [Self::node_padding(), Self::node_padding(), Self::node_padding(), 0.],
                 };
 
                 Some(widget::mouse_area(
                     widget::container(
                         node
                             .align_x(Alignment::Center)
-                            .spacing(spacing.space_none)
+                            .spacing(Self::node_spacing())
                             .padding(padding)
                     )
-                    .width(200)
+                    .width(Self::node_width())
                     .style(move |theme: &cosmic::Theme| {
                         let cosmic_data = theme.cosmic();
                         if is_inspected {
                             let border = cosmic::iced::Border {
                                 color: cosmic_data.accent.base.into(),
-                                width: 2.0,
+                                width: Self::inspection_border_width(),
                                 radius: 8.0.into(),
                             };
                             if is_hovered {
@@ -341,11 +503,6 @@ impl PipewireEntity {
                                 widget::container::Style {
                                     background: Some(cosmic_data.secondary.base.into()),
                                     border,
-                                    // shadow: cosmic::iced::Shadow {
-                                    //     color: cosmic::iced::Color::from_rgb8(0, 0, 0),
-                                    //     blur_radius: 4.0,
-                                    //     ..Default::default()
-                                    // },
                                     ..widget::container::Style::default()
                                 }
                             }
@@ -393,11 +550,11 @@ impl PipewireEntity {
 
                 fn port_widget<'a, Message: 'a>(media_type: MediaType, is_hovered: bool, is_inspected: bool) -> Element<'a, Message> {
                     let size = if is_inspected {
-                        16
+                        PipewireEntity::inspected_port_size()
                     } else if is_hovered {
-                        14
+                        PipewireEntity::inspected_port_size()-PipewireEntity::inspection_border_width()
                     } else {
-                        12
+                        PipewireEntity::inspected_port_size()-2.*PipewireEntity::inspection_border_width()
                     };
                     widget::container(widget::space::horizontal())
                         .width(size)
@@ -415,11 +572,12 @@ impl PipewireEntity {
                         MediaType::Midi => MIDI_PORT_COLOR,
 
                         // MediaType::Parameter => PARAMETER_PORT_COLOR,
+
                         MediaType::All => panic!("No media type found"),
                     };
                     let cosmic_data = theme.cosmic();
                     let border_radius = if is_hovered && is_inspected {6} else if is_inspected {8} else {6};
-                    let border_width = if is_inspected {2.} else {0.};
+                    let border_width = if is_inspected {PipewireEntity::inspection_border_width()} else {0.};
                     let border = cosmic::iced::Border {
                         color: cosmic_data.accent.base.into(),
                         width: border_width,
@@ -436,32 +594,33 @@ impl PipewireEntity {
                     return None
                 }
 
-                let spacing = theme::active().cosmic().spacing;
-                let padd = if is_inspected {
-                        0
-                    } else if is_hovered {
-                        1
-                    } else {
-                        2
-                    };
+                // add port position to hashset
+                let height_of_element = Self::port_height();
+                port_positions.insert(*id, (reference.0, reference.1+height_of_element/2.));
+                reference.1 += height_of_element;
+
+                // create UI element
+                let padd = if is_inspected {0.} else if is_hovered {Self::inspection_border_width()/2.} else {Self::inspection_border_width()};
 
                 match *port_type {
                     PortType::Source => {
                         Some(widget::row::with_children([
                             widget::space::horizontal().into(),
-                            widget::text(name.clone()).size(12).into(),
-                            widget::space::horizontal().width(spacing.space_xxs).into(),
+                            widget::text(name.clone()).size(Self::port_font_size()).into(),
+                            widget::space::horizontal().width(Self::port_spacing_to_label()).into(),
                             widget::container(
                                 widget::mouse_area(port_widget(media_type, is_hovered, is_inspected))
                                     .on_enter(Message::PortHover(*id))
                                     .on_exit(Message::StopPortHover)
                                     .on_press(Message::Inspect(Some(*id)))
                             )
-                            .padding([0, padd, 0, padd])
+                            .padding([0., padd, 0., padd])
                             .into(),
                         ])
+                        .height(Self::port_height())
                         .align_y(Alignment::Center)
-                        .padding(spacing.space_xxs)
+                        .spacing(Self::port_spacing())
+                        .padding(Self::port_padding())
                         .into())
                     }
 
@@ -473,14 +632,16 @@ impl PipewireEntity {
                                     .on_exit(Message::StopPortHover)
                                     .on_press(Message::Inspect(Some(*id)))
                             )
-                            .padding([0, padd, 0, padd])
+                            .padding([0., padd, 0., padd])
                             .into(),
-                            widget::space::horizontal().width(spacing.space_xxs).into(),
-                            widget::text(name.clone()).size(12).into(),
+                            widget::space::horizontal().width(Self::port_spacing_to_label()).into(),
+                            widget::text(name.clone()).size(Self::port_font_size()).into(),
                             widget::space::horizontal().into(),
                         ])
+                        .height(Self::port_height())
                         .align_y(Alignment::Center)
-                        .padding(spacing.space_xxs)
+                        .spacing(Self::port_spacing())
+                        .padding(Self::port_padding())
                         .into())
                     }
                 }
@@ -491,11 +652,77 @@ impl PipewireEntity {
 }
 
 
-#[derive(Debug, Clone)]
-struct Connection {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct PipewireConnection {
     from_port_id: PwId,
     to_port_id: PwId,
+    media_type: MediaType,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct CanvasConnectionSet {
+    pub connections: Vec<(cosmic::iced::Point, cosmic::iced::Point, MediaType,)>,
+}
 
+impl CanvasConnectionSet {
+    fn from(set: &HashSet<PipewireConnection>, positions: &HashMap<PwId, (f32, f32)>) -> Self {
+        let mut connections = Vec::new();
+        for link in set {
+            let from = positions.get(&link.from_port_id).expect("Failed to get position of port with id 'from_port_id'");
+            let to = positions.get(&link.to_port_id).expect("Failed to get position of port with id 'to_port_id'");
+            connections.push((
+                cosmic::iced::Point::new(from.0, from.1),
+                cosmic::iced::Point::new(to.0, to.1),
+                link.media_type,
+            ));
+        }
+        Self { connections }
+    }
+}
 
+impl<Message> canvas::Program<Message, cosmic::Theme, cosmic::Renderer> for CanvasConnectionSet {
+ type State = ();
+
+    fn draw(
+    &self,
+    _state: &Self::State,
+    renderer: &cosmic::Renderer,
+    _theme: &cosmic::Theme,
+    bounds: cosmic::iced::Rectangle,
+    _cursor: cosmic::iced::mouse::Cursor,
+    ) -> Vec<canvas::Geometry> {
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
+
+        for (start, end, media_type) in &self.connections {
+            let control_offset = (end.x - start.x).abs() / 2.0;
+
+            let cp1 = cosmic::iced::Point::new(start.x + control_offset, start.y);
+            let cp2 = cosmic::iced::Point::new(end.x - control_offset, end.y);
+
+            let curve = canvas::Path::new(|builder| {
+                builder.move_to(*start);
+                builder.bezier_curve_to(cp1, cp2, *end);
+            });
+
+            let color = match media_type {
+                MediaType::Video => VIDEO_PORT_COLOR,
+
+                MediaType::Audio => AUDIO_PORT_COLOR,
+
+                MediaType::Midi => MIDI_PORT_COLOR,
+
+                // MediaType::Parameter => PARAMETER_PORT_COLOR,
+
+                MediaType::All => panic!("No media type found"),
+            };
+            frame.stroke(
+                &curve,
+                canvas::Stroke::default()
+                .with_width(2.5)
+                .with_color(color) // Dezentere Farbe
+                .with_line_cap(canvas::LineCap::Round),
+            );
+        }
+        vec![frame.into_geometry()]
+    }
+}

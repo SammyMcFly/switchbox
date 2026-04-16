@@ -289,7 +289,10 @@ impl cosmic::Application for AppModel {
 
         content = content.push(top_bar_content);
 
-        let section_content = self.graph.view(self.hovered_items.hovered(), self.inspected_object);
+        // let section_content = self.graph.view(self.hovered_items.hovered(), self.inspected_object);
+        let section_content = widget::responsive(|size| {
+            self.graph.view(self.hovered_items.hovered(), self.inspected_object, size.width)
+        });
 
         // main content
         let section = widget::mouse_area(
@@ -302,7 +305,7 @@ impl cosmic::Application for AppModel {
         .on_press(Message::Inspect(None));
 
         let scrollable_section = widget::scrollable(section)
-        .height(Length::Fill);
+            .height(Length::Fill);
 
         content = content.push(scrollable_section);
 
