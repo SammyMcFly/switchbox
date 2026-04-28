@@ -34,7 +34,7 @@ impl Inspector {
         self.tabs.activate(entity);
     }
 
-    pub fn view(&self, inspected_object: Option<graph::PwId>) -> Option<Element<'_, super::Message>> {
+    pub fn view(&self, inspected_object: Option<graph::PipewireId>) -> Option<Element<'_, super::Message>> {
         inspected_object?;
 
         let spacing = theme::active().cosmic().spacing;

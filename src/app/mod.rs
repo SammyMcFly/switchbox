@@ -46,8 +46,11 @@ pub struct AppModel {
     inspector: inspector::Inspector,
     /// Hovered object
     hovered_items: HoveredItems,
+    /// Scroll status
+    source_scroll_offset_y: f32,
+    sink_scroll_offset_y: f32,
     /// Inspected node
-    inspected_object: Option<graph::PwId>,
+    inspected_object: Option<graph::PipewireId>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -58,13 +61,15 @@ struct Settings{
 /// Messages emitted by the application and its widgets.
 #[derive(Debug, Clone)]
 pub enum Message {
-    ObjectHover(graph::PwId),
+    ObjectHover(graph::PipewireId),
     StopObjectHover,
-    NodeHover(graph::PwId),
+    NodeHover(graph::PipewireId),
     StopNodeHover,
-    PortHover(graph::PwId),
+    PortHover(graph::PipewireId),
     StopPortHover,
-    Inspect(Option<graph::PwId>),
+    SourcesScrolled(f32),
+    SinksScrolled(f32),
+    Inspect(Option<graph::PipewireId>),
     InspectorTabSelected(widget::segmented_button::Entity),
     ToggleShowVideo,
     ToggleShowAudio,
@@ -137,6 +142,8 @@ impl cosmic::Application for AppModel {
             graph: graph::Graph::test(),
             inspector: inspector::Inspector::new(),
             hovered_items: HoveredItems::default(),
+            source_scroll_offset_y: 0.,
+            sink_scroll_offset_y: 0.,
             inspected_object: None,
         };
 
@@ -291,7 +298,13 @@ impl cosmic::Application for AppModel {
 
         // let section_content = self.graph.view(self.hovered_items.hovered(), self.inspected_object);
         let section_content = widget::responsive(|size| {
-            self.graph.view(self.hovered_items.hovered(), self.inspected_object, size.width)
+            self.graph.view(
+                self.hovered_items.hovered(),
+                self.inspected_object,
+                size.width,
+                self.source_scroll_offset_y,
+                self.sink_scroll_offset_y,
+            )
         });
 
         // main content
@@ -304,10 +317,7 @@ impl cosmic::Application for AppModel {
         )
         .on_press(Message::Inspect(None));
 
-        let scrollable_section = widget::scrollable(section)
-            .height(Length::Fill);
-
-        content = content.push(scrollable_section);
+        content = content.push(section);
 
         widget::container(content)
             .width(Length::Fill)
@@ -394,6 +404,10 @@ impl cosmic::Application for AppModel {
                 println!("exit port");
                 self.hovered_items.exit_port();
             }
+
+            Message::SourcesScrolled(offset) => self.source_scroll_offset_y = offset,
+
+            Message::SinksScrolled(offset) => self.sink_scroll_offset_y = offset,
 
             Message::Inspect(pwid) => {
                 self.inspected_object = pwid;
@@ -509,13 +523,13 @@ impl menu::action::MenuAction for MenuAction {
 
 #[derive(Clone, Debug, Default)]
 struct HoveredItems {
-    hovered_object: Option<graph::PwId>,
-    hovered_node: Option<graph::PwId>,
-    hovered_port: Option<graph::PwId>,
+    hovered_object: Option<graph::PipewireId>,
+    hovered_node: Option<graph::PipewireId>,
+    hovered_port: Option<graph::PipewireId>,
 }
 
 impl HoveredItems {
-    fn enter_object(&mut self, value: graph::PwId) {
+    fn enter_object(&mut self, value: graph::PipewireId) {
         self.hovered_object = Some(value);
     }
 
@@ -523,7 +537,7 @@ impl HoveredItems {
         self.hovered_object = None;
     }
 
-    fn enter_node(&mut self, value: graph::PwId) {
+    fn enter_node(&mut self, value: graph::PipewireId) {
         self.hovered_node = Some(value);
     }
 
@@ -531,7 +545,7 @@ impl HoveredItems {
         self.hovered_node = None;
     }
 
-    fn enter_port(&mut self, value: graph::PwId) {
+    fn enter_port(&mut self, value: graph::PipewireId) {
         self.hovered_port = Some(value);
     }
 
@@ -539,7 +553,7 @@ impl HoveredItems {
         self.hovered_port = None;
     }
 
-    fn hovered(&self) -> Option<graph::PwId> {
+    fn hovered(&self) -> Option<graph::PipewireId> {
         if self.hovered_port.is_some() {
             self.hovered_port
         } else if self.hovered_node.is_some() {

@@ -1,6 +1,7 @@
+// Objects needed to model the pipewire flow graph
 //
-//
-//
+// These struct represent the current state of the pipewire graph.
+// Their "view" method is used to render the graph to the UI.
 
 use super::Message;
 use std::collections::{HashMap, HashSet};
@@ -11,7 +12,7 @@ use cosmic::iced::widget::stack;
 use cosmic::iced::widget::canvas;
 
 
-pub type PwId = u32;
+pub type PipewireId = u32;
 // type UniqueId = String;
 
 // type ObjectOrderKey = u32;
@@ -48,9 +49,9 @@ pub enum PortType {
 
 #[derive(Debug, Clone, Default)]
 pub struct Graph {
-    objects: Vec<PwId>,
-    entities: HashMap<PwId, PipewireEntity>,
-    connections: HashSet<PipewireConnection>,
+    objects: Vec<PipewireId>,
+    connections: HashSet<PipewireId>,
+    entities: HashMap<PipewireId, PipewireEntity>,
 }
 
 impl Graph {
@@ -64,10 +65,14 @@ impl Graph {
         entities.insert(1, PipewireEntity::MediaObject { id: 1, name: "test_device_1".to_string(), device_type: DeviceClass::Device, nodes: vec![2] });
         entities.insert(9, PipewireEntity::Port { id: 9, name: "test_port_1".to_string(), port_type: PortType::Sink });
         entities.insert(10, PipewireEntity::Port { id: 10, name: "test_port_2".to_string(), port_type: PortType::Sink });
-        entities.insert(8, PipewireEntity::Node { id: 8, name: "test_node_1".to_string(), media_type: MediaType::Midi, ports: vec![9, 10] });
+        entities.insert(18, PipewireEntity::Port { id: 18, name: "test_port_3".to_string(), port_type: PortType::Source });
+        entities.insert(19, PipewireEntity::Port { id: 19, name: "test_port_4".to_string(), port_type: PortType::Source });
+        entities.insert(8, PipewireEntity::Node { id: 8, name: "test_node_1".to_string(), media_type: MediaType::Midi, ports: vec![9, 10, 18, 19] });
         entities.insert(11, PipewireEntity::Port { id: 11, name: "test_port_1".to_string(), port_type: PortType::Sink });
         entities.insert(12, PipewireEntity::Port { id: 12, name: "test_port_2".to_string(), port_type: PortType::Sink });
-        entities.insert(13, PipewireEntity::Node { id: 13, name: "test_node_1".to_string(), media_type: MediaType::Audio, ports: vec![11, 12] });
+        entities.insert(20, PipewireEntity::Port { id: 20, name: "test_port_3".to_string(), port_type: PortType::Source });
+        entities.insert(21, PipewireEntity::Port { id: 21, name: "test_port_4".to_string(), port_type: PortType::Source });
+        entities.insert(13, PipewireEntity::Node { id: 13, name: "test_node_1".to_string(), media_type: MediaType::Audio, ports: vec![11, 12, 20, 21] });
         entities.insert(7, PipewireEntity::MediaObject { id: 7, name: "test_device_2".to_string(), device_type: DeviceClass::Device, nodes: vec![8, 13] });
         entities.insert(14, PipewireEntity::Port { id: 14, name: "test_port_1".to_string(), port_type: PortType::Source });
         entities.insert(15, PipewireEntity::Port { id: 15, name: "test_port_2".to_string(), port_type: PortType::Source });
@@ -76,8 +81,10 @@ impl Graph {
 
 
         let mut connections = HashSet::new();
-        connections.insert(PipewireConnection { from_port_id: 5, to_port_id: 11, media_type: MediaType::Audio, });
-        connections.insert(PipewireConnection { from_port_id: 6, to_port_id: 12, media_type: MediaType::Audio, });
+        connections.insert(100);
+        connections.insert(101);
+        entities.insert(100, PipewireEntity::Connection { id: 100, from_port_id: 5, to_port_id: 11, media_type: MediaType::Audio, });
+        entities.insert(101, PipewireEntity::Connection { id: 101, from_port_id: 6, to_port_id: 12, media_type: MediaType::Audio, });
 
         Self {
             objects: vec![1, 7, 17],
@@ -91,9 +98,13 @@ impl Graph {
         spacing.space_xxxs as f32
     }
 
-    fn column_padding() -> f32 {
+    fn column_vertical_padding() -> f32 {
         let spacing = theme::active().cosmic().spacing;
         spacing.space_none as f32
+    }
+
+    const fn column_horizontal_padding() -> f32 {
+        10.
     }
 
     fn column_spacing() -> f32 {
@@ -101,20 +112,31 @@ impl Graph {
         spacing.space_xxs as f32
     }
 
-    pub fn view(&self, hovered_object: Option<PwId>, inspected_object: Option<PwId>, width: f32) -> Element<'_, Message> {
-        // store positions of all ports
-        let mut port_positions: HashMap<PwId, (f32, f32)> = HashMap::new();
+    const fn node_area_width() -> f32 {
+        200. + 2.*Self::column_horizontal_padding()
+    }
+
+    pub fn view(
+        &self,
+        hovered_object: Option<PipewireId>,
+        inspected_object: Option<PipewireId>,
+        width: f32,
+        source_scroll_offset_y: f32,
+        sink_scroll_offset_y: f32,
+    ) -> Element<'_, Message> {
+        // store positions of all ports on the UI
+        let mut port_positions: HashMap<PipewireId, (f32, f32)> = HashMap::new();
 
         // Widget layer
         // Sources
         // references to track the position on the canvas
-        let x_total_padding_sources = Self::canvas_padding()+Self::column_padding()+PipewireEntity::object_padding()+PipewireEntity::node_width()-PipewireEntity::node_padding()-PipewireEntity::inspected_port_size()/2.;
-        let y_total_padding_sources = Self::canvas_padding()+Self::column_padding();
+        let x_total_padding_sources = Self::canvas_padding()+Self::node_area_width()-Self::column_horizontal_padding()-PipewireEntity::node_padding()-PipewireEntity::inspected_port_size()/2.;
+        let y_total_padding_sources = Self::canvas_padding()+Self::column_vertical_padding();
         let mut reference = (x_total_padding_sources, y_total_padding_sources);
 
         let mut sources: widget::Column<'_, Message> = widget::column();
         for pwid in &self.objects {
-            if let Some(device) = self.entities.get(pwid).expect("Failed to get value for key").view(
+            if let Some(object) = self.entities.get(pwid).expect("Failed to get value for key").view(
                 PortType::Source,
                 MediaType::All,
                 hovered_object,
@@ -123,7 +145,7 @@ impl Graph {
                 &mut reference,
                 &mut port_positions,
             ) {
-                sources = sources.push(device);
+                sources = sources.push(object);
                 reference.1 += Self::column_spacing();
             }
         }
@@ -131,7 +153,7 @@ impl Graph {
         // Sinks
         // references to track the position on the canvas
         let x_total_padding_sinks = width - x_total_padding_sources;
-        let y_total_padding_sinks = Self::canvas_padding()+Self::column_padding();
+        let y_total_padding_sinks = Self::canvas_padding()+Self::column_vertical_padding();
         let mut reference = (x_total_padding_sinks, y_total_padding_sinks);
 
         let mut sinks: widget::Column<'_, Message> = widget::column();
@@ -151,24 +173,46 @@ impl Graph {
         }
 
         let widget_layer = widget::row::with_children([
-            sources
-            .spacing(Self::column_spacing())
-            .padding(Self::column_padding())
-            .align_x(Alignment::Start)
-            .into(),
+            widget::scrollable(
+                sources
+                    .spacing(Self::column_spacing())
+                    .padding([Self::column_vertical_padding(), 10.])
+                    .width(Self::node_area_width())
+                    .align_x(Alignment::Start)
+            )
+            .on_scroll(|viewport| {
+                let source_scroll_offset = viewport.absolute_offset();
+                Message::SourcesScrolled(source_scroll_offset.y) // Schickt die vertikale Pixel-Position an update()
+            })
+            .height(Length::Fill).into(),
             widget::space::horizontal().into(),
-            sinks
-            .spacing(Self::column_spacing())
-            .padding(Self::column_padding())
-            .align_x(Alignment::End)
-            .into(),
+            widget::scrollable(
+                sinks
+                    .spacing(Self::column_spacing())
+                    .padding([Self::column_vertical_padding(), 10.])
+                    .width(Self::node_area_width())
+                    .align_x(Alignment::End)
+            )
+            .on_scroll(|viewport| {
+                let sink_scroll_offset = viewport.absolute_offset();
+                Message::SinksScrolled(sink_scroll_offset.y) // Schickt die vertikale Pixel-Position an update()
+            })
+            .height(Length::Fill).into(),
         ])
         .padding(Self::canvas_padding())
         .align_y(Alignment::Start);
 
         // Connections
-        let ccset = CanvasConnectionSet::from(&self.connections, &port_positions);
-        let connection_layer = cosmic::iced::widget::canvas::Canvas::<CanvasConnectionSet, Message, cosmic::Theme, cosmic::Renderer>::new(ccset)
+        let ccset = CanvasConnectionSet::from(
+            &self.connections,
+            &self.entities,
+            &port_positions,
+            source_scroll_offset_y,
+            sink_scroll_offset_y,
+        );
+        let connection_layer = cosmic::iced::widget::canvas::Canvas::<CanvasConnectionSet, Message, cosmic::Theme, cosmic::Renderer>::new(
+            ccset
+        )
             .width(Length::Fill)
             .height(Length::Fill);
 
@@ -185,7 +229,7 @@ impl Graph {
 // }
 
 // pub struct CompleteKnownGraph {
-//     pwid_dict: HashMap<UniqueId, PwId>,
+//     pwid_dict: HashMap<UniqueId, PipewireId>,
 //     known_objects: HashMap<UniqueId, KnownObject>,
 // }
 
@@ -194,32 +238,35 @@ impl Graph {
 pub enum PipewireEntity {
     MediaObject {
         // unique_id: UniqueId,
-        id: PwId,
+        id: PipewireId,
         name: String,
         device_type: DeviceClass,
-        nodes: Vec<PwId>,
-        // node_order: HashMap<NodeOrderKey, PwId>,
+        nodes: Vec<PipewireId>,
+        // node_order: HashMap<NodeOrderKey, PipewireId>,
     },
     Node {
         // unique_id: UniqueId,
-        id: PwId,
+        id: PipewireId,
         name: String,
         media_type: MediaType,
-        ports: Vec<PwId>,
-        // port_order: HashMap<PortOrderKey, PwId>,
+        ports: Vec<PipewireId>,
+        // port_order: HashMap<PortOrderKey, PipewireId>,
     },
     Port {
         // unique_id: UniqueId,
-        id: PwId,
+        id: PipewireId,
         name: String,
         port_type: PortType,
+    },
+    Connection {
+        id: PipewireId,
+        from_port_id: PipewireId,
+        to_port_id: PipewireId,
+        media_type: MediaType,
     }
 }
 
 impl PipewireEntity {
-    const fn node_width() -> f32 {
-        200.
-    }
     const fn inspection_border_width() -> f32 {
         2.
     }
@@ -291,11 +338,11 @@ impl PipewireEntity {
         &self,
         side: PortType,
         media_type: MediaType,
-        hovered_object: Option<PwId>,
-        inspected_object: Option<PwId>,
-        objects: &'a HashMap<PwId, Self>,
+        hovered_object: Option<PipewireId>,
+        inspected_object: Option<PipewireId>,
+        objects: &'a HashMap<PipewireId, Self>,
         reference: &mut (f32, f32),
-        port_positions: &mut HashMap<PwId, (f32, f32)>,
+        port_positions: &mut HashMap<PipewireId, (f32, f32)>,
     ) -> Option<Element<'a, Message>> {
         match self {
             Self::MediaObject { id, name, device_type, nodes } => {
@@ -370,7 +417,7 @@ impl PipewireEntity {
                             .align_x(alignment)
                             // .padding(padding)
                     )
-                    // .width(200)
+                    .width(Length::Fill)
                     .style(move |theme: &cosmic::Theme| {
                         let cosmic_data = theme.cosmic();
                         if is_inspected {
@@ -484,7 +531,7 @@ impl PipewireEntity {
                             .spacing(Self::node_spacing())
                             .padding(padding)
                     )
-                    .width(Self::node_width())
+                    .width(Length::Fill)
                     .style(move |theme: &cosmic::Theme| {
                         let cosmic_data = theme.cosmic();
                         if is_inspected {
@@ -646,18 +693,14 @@ impl PipewireEntity {
                     }
                 }
             }
+            PipewireEntity::Connection { .. } => {
+                panic!(".view() is not supposed to be called on PipewireEntity::Connection directly.")
+            },
         }
-
     }
 }
 
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct PipewireConnection {
-    from_port_id: PwId,
-    to_port_id: PwId,
-    media_type: MediaType,
-}
 
 #[derive(Debug, Clone, Default)]
 pub struct CanvasConnectionSet {
@@ -665,16 +708,25 @@ pub struct CanvasConnectionSet {
 }
 
 impl CanvasConnectionSet {
-    fn from(set: &HashSet<PipewireConnection>, positions: &HashMap<PwId, (f32, f32)>) -> Self {
+    fn from(
+        set: &HashSet<PipewireId>,
+        entities: &HashMap<PipewireId, PipewireEntity>,
+        port_positions: &HashMap<PipewireId, (f32, f32)>,
+        source_scroll_offset_y: f32,
+        sink_scroll_offset_y: f32,
+    ) -> Self {
         let mut connections = Vec::new();
-        for link in set {
-            let from = positions.get(&link.from_port_id).expect("Failed to get position of port with id 'from_port_id'");
-            let to = positions.get(&link.to_port_id).expect("Failed to get position of port with id 'to_port_id'");
-            connections.push((
-                cosmic::iced::Point::new(from.0, from.1),
-                cosmic::iced::Point::new(to.0, to.1),
-                link.media_type,
-            ));
+        for link_id in set {
+            let link = entities.get(link_id).expect("Failed to get pipewire connection");
+            if let PipewireEntity::Connection { from_port_id, to_port_id, media_type, .. } = link {
+                let from = port_positions.get(from_port_id).expect("Failed to get position of port with id 'from_port_id'");
+                let to = port_positions.get(to_port_id).expect("Failed to get position of port with id 'to_port_id'");
+                connections.push((
+                    cosmic::iced::Point::new(from.0, from.1-source_scroll_offset_y),
+                    cosmic::iced::Point::new(to.0, to.1-sink_scroll_offset_y),
+                    *media_type,
+                ));
+            }
         }
         Self { connections }
     }
