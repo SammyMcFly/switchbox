@@ -50,7 +50,7 @@ pub enum PortType {
 #[derive(Debug, Clone, Default)]
 pub struct Graph {
     objects: Vec<PipewireId>,
-    connections: HashSet<PipewireId>,
+    links: HashSet<PipewireId>,
     entities: HashMap<PipewireId, PipewireEntity>,
 }
 
@@ -80,16 +80,16 @@ impl Graph {
         entities.insert(17, PipewireEntity::MediaObject { id: 17, name: "test_device_3".to_string(), device_type: DeviceClass::Device, nodes: vec![16] });
 
 
-        let mut connections = HashSet::new();
-        connections.insert(100);
-        connections.insert(101);
-        entities.insert(100, PipewireEntity::Connection { id: 100, from_port_id: 5, to_port_id: 11, media_type: MediaType::Audio, });
-        entities.insert(101, PipewireEntity::Connection { id: 101, from_port_id: 6, to_port_id: 12, media_type: MediaType::Audio, });
+        let mut links = HashSet::new();
+        links.insert(100);
+        links.insert(101);
+        entities.insert(100, PipewireEntity::Link { id: 100, from_port_id: 5, to_port_id: 11, media_type: MediaType::Audio, });
+        entities.insert(101, PipewireEntity::Link { id: 101, from_port_id: 6, to_port_id: 12, media_type: MediaType::Audio, });
 
         Self {
             objects: vec![1, 7, 17],
             entities,
-            connections,
+            links,
         }
     }
 
@@ -202,21 +202,21 @@ impl Graph {
         .padding(Self::canvas_padding())
         .align_y(Alignment::Start);
 
-        // Connections
-        let ccset = CanvasConnectionSet::from(
-            &self.connections,
+        // Links
+        let ccset = CanvasLinkSet::from(
+            &self.links,
             &self.entities,
             &port_positions,
             source_scroll_offset_y,
             sink_scroll_offset_y,
         );
-        let connection_layer = cosmic::iced::widget::canvas::Canvas::<CanvasConnectionSet, Message, cosmic::Theme, cosmic::Renderer>::new(
+        let link_layer = cosmic::iced::widget::canvas::Canvas::<CanvasLinkSet, Message, cosmic::Theme, cosmic::Renderer>::new(
             ccset
         )
             .width(Length::Fill)
             .height(Length::Fill);
 
-        stack![widget_layer, connection_layer].into()
+        stack![widget_layer, link_layer].into()
     }
 }
 
@@ -225,7 +225,7 @@ impl Graph {
 //     unique_id: UniqueId,
 //     is_present: bool,
 //     known_nodes: HashMap<UniqueId, KnownObject>,
-//     known_connections: HashMap<(UniqueId, UniqueId), KnownObject>,
+//     known_links: HashMap<(UniqueId, UniqueId), KnownObject>,
 // }
 
 // pub struct CompleteKnownGraph {
@@ -258,7 +258,7 @@ pub enum PipewireEntity {
         name: String,
         port_type: PortType,
     },
-    Connection {
+    Link {
         id: PipewireId,
         from_port_id: PipewireId,
         to_port_id: PipewireId,
@@ -693,8 +693,8 @@ impl PipewireEntity {
                     }
                 }
             }
-            PipewireEntity::Connection { .. } => {
-                panic!(".view() is not supposed to be called on PipewireEntity::Connection directly.")
+            PipewireEntity::Link { .. } => {
+                panic!(".view() is not supposed to be called on PipewireEntity::Link directly.")
             },
         }
     }
@@ -703,11 +703,11 @@ impl PipewireEntity {
 
 
 #[derive(Debug, Clone, Default)]
-pub struct CanvasConnectionSet {
-    pub connections: Vec<(cosmic::iced::Point, cosmic::iced::Point, MediaType,)>,
+pub struct CanvasLinkSet {
+    pub links: Vec<(cosmic::iced::Point, cosmic::iced::Point, MediaType,)>,
 }
 
-impl CanvasConnectionSet {
+impl CanvasLinkSet {
     fn from(
         set: &HashSet<PipewireId>,
         entities: &HashMap<PipewireId, PipewireEntity>,
@@ -715,24 +715,24 @@ impl CanvasConnectionSet {
         source_scroll_offset_y: f32,
         sink_scroll_offset_y: f32,
     ) -> Self {
-        let mut connections = Vec::new();
+        let mut links = Vec::new();
         for link_id in set {
-            let link = entities.get(link_id).expect("Failed to get pipewire connection");
-            if let PipewireEntity::Connection { from_port_id, to_port_id, media_type, .. } = link {
+            let link = entities.get(link_id).expect("Failed to get pipewire link");
+            if let PipewireEntity::Link { from_port_id, to_port_id, media_type, .. } = link {
                 let from = port_positions.get(from_port_id).expect("Failed to get position of port with id 'from_port_id'");
                 let to = port_positions.get(to_port_id).expect("Failed to get position of port with id 'to_port_id'");
-                connections.push((
+                links.push((
                     cosmic::iced::Point::new(from.0, from.1-source_scroll_offset_y),
                     cosmic::iced::Point::new(to.0, to.1-sink_scroll_offset_y),
                     *media_type,
                 ));
             }
         }
-        Self { connections }
+        Self { links }
     }
 }
 
-impl<Message> canvas::Program<Message, cosmic::Theme, cosmic::Renderer> for CanvasConnectionSet {
+impl<Message> canvas::Program<Message, cosmic::Theme, cosmic::Renderer> for CanvasLinkSet {
  type State = ();
 
     fn draw(
@@ -745,7 +745,7 @@ impl<Message> canvas::Program<Message, cosmic::Theme, cosmic::Renderer> for Canv
     ) -> Vec<canvas::Geometry> {
         let mut frame = canvas::Frame::new(renderer, bounds.size());
 
-        for (start, end, media_type) in &self.connections {
+        for (start, end, media_type) in &self.links {
             let control_offset = (end.x - start.x).abs() / 2.0;
 
             let cp1 = cosmic::iced::Point::new(start.x + control_offset, start.y);
