@@ -1,6 +1,29 @@
 # Switchbox
 
-Media routing and manipulation program
+A modern media routing application for [PipeWire](https://pipewire.org/) built with the [COSMIC](https://github.com/pop-os/libcosmic) desktop toolkit.
+
+Switchbox provides an intuitive graphical interface for managing audio, video, and MIDI connections between PipeWire nodes — with the goal of surpassing existing tools.
+
+![License: MPL-2.0](https://img.shields.io/badge/License-MPL--2.0-blue.svg)
+
+## Planned Features
+
+- Visual patchbay for PipeWire source and sink connections
+- Color-coded ports by media type (Audio, Video, MIDI)
+- Filterable view by media type and device class
+- Node inspector with detailed information and internal routing
+- Bezier curve link visualization on a canvas layer
+- Hover and selection highlighting
+- COSMIC desktop integration (context drawers, theming, localization)
+
+## Roadmap
+
+| Version | Focus |
+|---------|-------|
+| **v1.0** | Non-persistent media routing; applet functionality (system tray, launch at start, right-click menu) |
+| **v2.0** | Advanced and persistent audio routing via inspector and busses, that remembers connected devices |
+| **v3.0** | Audio plugin support (CLAP, VST3, LV2) |
+| **v4.0** | Advanced MIDI/Video routing; internal controller routing |
 
 ## Installation
 
@@ -42,3 +65,7 @@ Developers should install [rustup][rustup] and configure their editor to use [ru
 [rust-analyzer]: https://rust-analyzer.github.io/
 [mold]: https://github.com/rui314/mold
 [sccache]: https://github.com/mozilla/sccache
+
+## License
+
+This project is licensed under the [Mozilla Public License 2.0 (MPL-2.0)](https://www.mozilla.org/en-US/MPL/2.0/).
