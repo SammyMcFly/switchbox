@@ -6,7 +6,7 @@ Switchbox provides an intuitive graphical interface for managing audio, video, a
 
 ![License: MPL-2.0](https://img.shields.io/badge/License-MPL--2.0-blue.svg)
 
-## Planned Features
+## Features (WIP)
 
 - Visual patchbay for PipeWire source and sink connections
 - Color-coded ports by media type (Audio, Video, MIDI)
