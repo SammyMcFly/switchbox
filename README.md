@@ -1,6 +1,6 @@
 # Switchbox
 
-A modern media routing application for [PipeWire](https://pipewire.org/) built with the [COSMIC](https://github.com/pop-os/libcosmic) desktop toolkit.
+A modern media routing application for [PipeWire](https://pipewire.org/) built with [libcosmic](https://github.com/pop-os/libcosmic).
 
 Switchbox provides an intuitive graphical interface for managing audio, video, and MIDI connections between PipeWire nodes — with the goal of surpassing existing tools.
 
