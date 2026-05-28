@@ -1,20 +1,22 @@
 # Switchbox
 
-A modern media routing application for [PipeWire](https://pipewire.org/) built with [libcosmic](https://github.com/pop-os/libcosmic).
+A modern media routing application for [PipeWire](https://pipewire.org/) built with Rust and [libcosmic](https://github.com/pop-os/libcosmic).
 
 Switchbox provides an intuitive graphical interface for managing audio, video, and MIDI connections between PipeWire nodes — with the goal of surpassing existing tools.
+
+Note: the project is in the early stages of development.
 
 ![License: MPL-2.0](https://img.shields.io/badge/License-MPL--2.0-blue.svg)
 
 ![UI_screenshot](./images/UI_current_status.png)
 
-## Features (WIP)
+## Features
 
-- Visual patchbay for PipeWire source and sink connections
+- Visual patchbay for PipeWire source and sink connections (WIP)
 - Color-coded ports by media type (Audio, Video, MIDI)
-- Filterable view by media type and device class
-- Node inspector with detailed information and internal routing
-- Bezier curve link visualization on a canvas layer
+- Filterable view by media type and device class (WIP)
+- Node inspector with detailed information and internal routing (WIP)
+- Bezier curve link visualization
 - Hover and selection highlighting
 - COSMIC desktop integration (context drawers, theming, localization)
 
